@@ -21,12 +21,16 @@ import java.io.Reader;
 import java.io.StringReader;
 import java.nio.charset.Charset;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.json.*;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import java.util.*;
+import org.json.XML.KeyTransformer;
 
 /**
  * Tests for JSON-Java XML.java
@@ -1590,4 +1594,180 @@ public class XMLTest {
         assertEquals("Deeply nested target should be replaced", replacementJson.toString(), target.toString());
     }
 
+    // Milstone 3
+    @Test
+    public void testSimpleJsonObjectStreaming() {
+        JSONObject obj = new JSONObject();
+        obj.put("name", "John");
+        obj.put("age", 30);
+        obj.put("city", "New York");
+
+        List<JSONNode> nodes = obj.toStream().collect(Collectors.toList());
+
+        assertEquals(3, nodes.size());
+
+        Map<String, Object> values = new HashMap<>();
+        for (JSONNode node : nodes) {
+            values.put(node.getKey(), node.getValue());
+        }
+
+        assertEquals("John", values.get("name"));
+        assertEquals(30, values.get("age"));
+        assertEquals("New York", values.get("city"));
+    }
+
+    @Test
+    public void testNestedJsonObjectStreaming() {
+        JSONObject address = new JSONObject();
+        address.put("street", "123 Main St");
+        address.put("city", "New York");
+        address.put("zip", "10001");
+
+        JSONObject person = new JSONObject();
+        person.put("name", "John");
+        person.put("age", 30);
+        person.put("address", address);
+
+        List<JSONNode> nodes = person.toStream().collect(Collectors.toList());
+
+        // Should have 6 nodes: name, age, address itself, and address's 3 fields
+        assertEquals(6, nodes.size());
+
+        // Check paths
+        List<String> paths = nodes.stream().map(JSONNode::getPath).collect(Collectors.toList());
+        assertTrue(paths.contains("name"));
+        assertTrue(paths.contains("age"));
+        assertTrue(paths.contains("address"));
+        assertTrue(paths.contains("address/street"));
+        assertTrue(paths.contains("address/city"));
+        assertTrue(paths.contains("address/zip"));
+    }
+
+    @Test
+    public void testJsonArrayStreaming() {
+        JSONArray books = new JSONArray();
+
+        JSONObject book1 = new JSONObject();
+        book1.put("title", "AAA");
+        book1.put("author", "ASmith");
+        books.put(book1);
+
+        JSONObject book2 = new JSONObject();
+        book2.put("title", "BBB");
+        book2.put("author", "BSmith");
+        books.put(book2);
+
+        JSONObject container = new JSONObject();
+        container.put("books", books);
+
+        List<JSONNode> nodes = container.toStream().collect(Collectors.toList());
+
+        // Should have 5 nodes: books, and 2 books with 2 fields each
+        assertEquals(5, nodes.size());
+
+        // Check some paths
+        List<String> paths = nodes.stream().map(JSONNode::getPath).collect(Collectors.toList());
+        assertTrue(paths.contains("books"));
+        assertTrue(paths.contains("books[0]/title"));
+        assertTrue(paths.contains("books[0]/author"));
+        assertTrue(paths.contains("books[1]/title"));
+        assertTrue(paths.contains("books[1]/author"));
+    }
+
+    @Test
+    public void testLeafNodesStreaming() {
+        JSONObject address = new JSONObject();
+        address.put("street", "123 Main St");
+        address.put("city", "New York");
+
+        JSONObject person = new JSONObject();
+        person.put("name", "John");
+        person.put("age", 30);
+        person.put("address", address);
+
+        List<JSONNode> nodes = person.toLeafStream().collect(Collectors.toList());
+
+        // Should have 4 leaf nodes: name, age, address/street, address/city
+        assertEquals(4, nodes.size());
+
+        // Verify only leaf nodes are included
+        for (JSONNode node : nodes) {
+            assertTrue(node.isLeaf());
+        }
+
+        // Check paths
+        List<String> paths = nodes.stream().map(JSONNode::getPath).collect(Collectors.toList());
+        assertTrue(paths.contains("name"));
+        assertTrue(paths.contains("age"));
+        assertTrue(paths.contains("address/street"));
+        assertTrue(paths.contains("address/city"));
+        assertFalse(paths.contains("address")); // Non-leaf node
+    }
+
+    @Test
+    public void testFlatStreamOnlyTopLevel() {
+        JSONObject address = new JSONObject();
+        address.put("street", "123 Main St");
+        address.put("city", "New York");
+
+        JSONObject person = new JSONObject();
+        person.put("name", "John");
+        person.put("age", 30);
+        person.put("address", address);
+
+        List<JSONNode> nodes = person.toFlatStream().collect(Collectors.toList());
+
+        // Should have 3 top-level nodes only: name, age, address
+        assertEquals(3, nodes.size());
+
+        // Check paths
+        List<String> paths = nodes.stream().map(JSONNode::getPath).collect(Collectors.toList());
+        assertTrue(paths.contains("name"));
+        assertTrue(paths.contains("age"));
+        assertTrue(paths.contains("address"));
+        assertFalse(paths.contains("address/street")); // Not in flat stream
+    }
+
+    @Test
+    public void testComplexXmlToJsonConversion() throws Exception {
+        String xml = "<root><person id=\"1\"><n>John</n><age>30</age><address><street>123 Main St</street><city>New York</city></address></person>"
+                + "<person id=\"2\"><n>Jane</n><age>25</age><address><street>456 Oak Ave</street><city>Boston</city></address></person></root>";
+
+        JSONObject obj = XML.toJSONObject(new StringReader(xml), key -> key); // Identity transformation
+
+        // Extract all city names - handle the fact that they're stored as {"content":
+        // "city name"}
+        List<String> cities = obj.toStream()
+                .filter(node -> "city".equals(node.getKey()))
+                .map(node -> {
+                    Object value = node.getValue();
+                    if (value instanceof JSONObject) {
+                        JSONObject cityObj = (JSONObject) value;
+                        return cityObj.optString("content", "");
+                    }
+                    return value.toString();
+                })
+                .collect(Collectors.toList());
+
+        assertEquals("Should find exactly 2 cities", 2, cities.size());
+        assertTrue("Should contain New York", cities.contains("New York"));
+        assertTrue("Should contain Boston", cities.contains("Boston"));
+
+        // Calculate average age - handle the fact that ages are also stored as
+        // {"content": "30"}
+        double avgAge = obj.toStream()
+                .filter(node -> "age".equals(node.getKey()))
+                .mapToInt(node -> {
+                    Object value = node.getValue();
+                    if (value instanceof JSONObject) {
+                        JSONObject ageObj = (JSONObject) value;
+                        return Integer.parseInt(ageObj.optString("content", "0"));
+                    }
+                    return Integer.parseInt(value.toString());
+                })
+                .average()
+                .orElse(0);
+
+        assertEquals("Average age should be 27.5", 27.5, avgAge, 0.001);
+    }
 }
