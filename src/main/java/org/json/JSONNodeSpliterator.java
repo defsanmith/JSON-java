@@ -50,6 +50,23 @@ public class JSONNodeSpliterator implements Spliterator<JSONNode> {
         collectNodes(root, basePath, root);
     }
 
+    /**
+     * @param root       root {@link JSONArray} to iterate
+     * @param basePath   starting path (usually empty string)
+     * @param recursive  {@code true} to recurse into children
+     * @param leavesOnly {@code true} to return only primitive leaves
+     */
+    public JSONNodeSpliterator(JSONArray root,
+            String basePath,
+            boolean recursive,
+            boolean leavesOnly) {
+        this.isRecursive = recursive;
+        this.leavesOnly = leavesOnly;
+
+        // Pre‑collect all array nodes
+        collectArrayNodes(root, basePath, null);
+    }
+
     /*
      * --------------------------------------------------------------------- *
      * Internal collection helpers *
@@ -104,23 +121,49 @@ public class JSONNodeSpliterator implements Spliterator<JSONNode> {
     private void collectArrayNodes(JSONArray array,
             String currentPath,
             JSONObject parentObj) {
+        if (visited.contains(array)) {
+            return; // avoid circular reference
+        }
+        visited.add(array);
+
+        // If not leaf-only, add the array itself as a node
+        if (array != null && !currentPath.isEmpty() && !leavesOnly) {
+            // Extract the parent key from the path
+            String key = currentPath.contains("/")
+                    ? currentPath.substring(currentPath.lastIndexOf('/') + 1)
+                    : currentPath.contains("[")
+                            ? currentPath.substring(currentPath.lastIndexOf('['))
+                            : currentPath;
+
+            if (key.endsWith("]")) {
+                key = key.substring(1, key.length() - 1);
+            }
+
+            JSONNode arrayNode = new JSONNode(currentPath, key, array, parentObj);
+            if (!leavesOnly) {
+                nodeQueue.addLast(arrayNode);
+            }
+        }
+
         for (int i = 0; i < array.length(); i++) {
             try {
                 Object value = array.get(i);
                 String idxPath = currentPath + "[" + i + "]";
 
-                if (value instanceof JSONObject && !visited.contains(value)) {
-                    collectNodes((JSONObject) value, idxPath, (JSONObject) value);
-                } else if (value instanceof JSONArray) {
-                    collectArrayNodes((JSONArray) value, idxPath, parentObj);
-                } else {
-                    // Primitive array element
-                    JSONNode node = new JSONNode(idxPath, String.valueOf(i), value, parentObj);
-                    if (!leavesOnly || node.isLeaf()) {
-                        nodeQueue.addLast(node);
-                    }
+                // Add the element itself
+                JSONNode elementNode = new JSONNode(idxPath, String.valueOf(i), value, parentObj);
+                if (!leavesOnly || elementNode.isLeaf()) {
+                    nodeQueue.addLast(elementNode);
                 }
 
+                // Recurse into nested structures if recursive mode is on
+                if (isRecursive && value != null) {
+                    if (value instanceof JSONObject && !visited.contains(value)) {
+                        collectNodes((JSONObject) value, idxPath, (JSONObject) value);
+                    } else if (value instanceof JSONArray && !visited.contains(value)) {
+                        collectArrayNodes((JSONArray) value, idxPath, parentObj);
+                    }
+                }
             } catch (Exception ex) {
                 System.err.printf("Skipping array element at [%d]: %s%n", i, ex.getMessage());
             }
