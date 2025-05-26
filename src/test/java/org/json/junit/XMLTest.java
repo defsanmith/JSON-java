@@ -1662,8 +1662,8 @@ public class XMLTest {
 
         List<JSONNode> nodes = container.toStream().collect(Collectors.toList());
 
-        // Should have 5 nodes: books, and 2 books with 2 fields each
-        assertEquals(5, nodes.size());
+        // Should have 8 nodes: books, books array, and 2 books with 2 fields each
+        assertEquals(8, nodes.size());
 
         // Check some paths
         List<String> paths = nodes.stream().map(JSONNode::getPath).collect(Collectors.toList());
