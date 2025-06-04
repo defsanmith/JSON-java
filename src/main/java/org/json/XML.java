@@ -11,6 +11,11 @@ import java.io.StringReader;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Iterator;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 /**
  * This provides static methods to convert an XML text into a JSONObject, and to
@@ -1704,5 +1709,225 @@ public class XML {
                 depth--;
             }
         }
+    }
+
+    /**
+     * Convert a well-formed (but not necessarily valid) XML into a
+     * JSONObject asynchronously. Some information may be lost in this transformation because
+     * JSON is a data format and XML is a document format. XML uses elements,
+     * attributes, and content text, while JSON uses unordered collections of
+     * name/value pairs and arrays of values. JSON does not does not like to
+     * distinguish between elements and attributes. Sequences of similar
+     * elements are represented as JSONArrays. Content text may be placed in a
+     * "content" member. Comments, prologs, DTDs, and
+     * 
+     * <pre>{@code
+     * &lt;[ [ ]]>}</pre>
+     * 
+     * are ignored.
+     *
+     * @param reader The XML source reader.
+     * @param successCallback Callback that will be invoked with the resulting JSONObject
+     * @param errorCallback Callback that will be invoked if there is an error while parsing
+     */
+    public static void toJSONObjectAsync(Reader reader, Consumer<JSONObject> successCallback, 
+            Consumer<Exception> errorCallback) {
+        toJSONObjectAsync(reader, XMLParserConfiguration.ORIGINAL, successCallback, errorCallback);
+    }
+
+    /**
+     * Convert a well-formed (but not necessarily valid) XML into a
+     * JSONObject asynchronously. Some information may be lost in this transformation because
+     * JSON is a data format and XML is a document format. XML uses elements,
+     * attributes, and content text, while JSON uses unordered collections of
+     * name/value pairs and arrays of values. JSON does not does not like to
+     * distinguish between elements and attributes. Sequences of similar
+     * elements are represented as JSONArrays. Content text may be placed in a
+     * "content" member. Comments, prologs, DTDs, and
+     * 
+     * <pre>{@code
+     * &lt;[ [ ]]>}</pre>
+     * 
+     * are ignored.
+     *
+     * @param reader The XML source reader.
+     * @param config Configuration options for the parser
+     * @param successCallback Callback that will be invoked with the resulting JSONObject
+     * @param errorCallback Callback that will be invoked if there is an error while parsing
+     */
+    public static void toJSONObjectAsync(Reader reader, XMLParserConfiguration config, 
+            Consumer<JSONObject> successCallback, Consumer<Exception> errorCallback) {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            CompletableFuture.supplyAsync(() -> {
+                try {
+                    return toJSONObject(reader, config);
+                } catch (JSONException e) {
+                    throw new RuntimeException(e);
+                }
+            }, executor)
+            .thenAccept(successCallback)
+            .exceptionally(e -> {
+                Throwable cause = e.getCause();
+                if (cause instanceof Exception) {
+                    errorCallback.accept((Exception) cause);
+                } else {
+                    errorCallback.accept(new JSONException("An error occurred during parsing", cause));
+                }
+                return null;
+            });
+        } finally {
+            executor.shutdown();
+        }
+    }
+
+    /**
+     * Convert a well-formed (but not necessarily valid) XML string into a
+     * JSONObject asynchronously. Some information may be lost in this transformation because
+     * JSON is a data format and XML is a document format. XML uses elements,
+     * attributes, and content text, while JSON uses unordered collections of
+     * name/value pairs and arrays of values. JSON does not does not like to
+     * distinguish between elements and attributes. Sequences of similar
+     * elements are represented as JSONArrays. Content text may be placed in a
+     * "content" member. Comments, prologs, DTDs, and
+     * 
+     * <pre>{@code
+     * &lt;[ [ ]]>}</pre>
+     * 
+     * are ignored.
+     *
+     * @param string The XML source string.
+     * @param successCallback Callback that will be invoked with the resulting JSONObject
+     * @param errorCallback Callback that will be invoked if there is an error while parsing
+     */
+    public static void toJSONObjectAsync(String string, Consumer<JSONObject> successCallback, 
+            Consumer<Exception> errorCallback) {
+        toJSONObjectAsync(new StringReader(string), successCallback, errorCallback);
+    }
+
+    /**
+     * Convert a well-formed (but not necessarily valid) XML string into a
+     * JSONObject asynchronously. Some information may be lost in this transformation because
+     * JSON is a data format and XML is a document format. XML uses elements,
+     * attributes, and content text, while JSON uses unordered collections of
+     * name/value pairs and arrays of values. JSON does not does not like to
+     * distinguish between elements and attributes. Sequences of similar
+     * elements are represented as JSONArrays. Content text may be placed in a
+     * "content" member. Comments, prologs, DTDs, and
+     * 
+     * <pre>{@code
+     * &lt;[ [ ]]>}</pre>
+     * 
+     * are ignored.
+     *
+     * @param string The XML source string.
+     * @param config Configuration options for the parser
+     * @param successCallback Callback that will be invoked with the resulting JSONObject
+     * @param errorCallback Callback that will be invoked if there is an error while parsing
+     */
+    public static void toJSONObjectAsync(String string, XMLParserConfiguration config, 
+            Consumer<JSONObject> successCallback, Consumer<Exception> errorCallback) {
+        toJSONObjectAsync(new StringReader(string), config, successCallback, errorCallback);
+    }
+
+    /**
+     * Convert a well-formed (but not necessarily valid) XML into a
+     * JSONObject asynchronously and return a CompletableFuture. Some information may be lost 
+     * in this transformation because JSON is a data format and XML is a document format. 
+     * XML uses elements, attributes, and content text, while JSON uses unordered collections of
+     * name/value pairs and arrays of values. JSON does not does not like to
+     * distinguish between elements and attributes. Sequences of similar
+     * elements are represented as JSONArrays. Content text may be placed in a
+     * "content" member. Comments, prologs, DTDs, and
+     * 
+     * <pre>{@code
+     * &lt;[ [ ]]>}</pre>
+     * 
+     * are ignored.
+     *
+     * @param reader The XML source reader.
+     * @return A CompletableFuture containing the JSONObject result
+     */
+    public static CompletableFuture<JSONObject> toJSONObjectAsync(Reader reader) {
+        return toJSONObjectAsync(reader, XMLParserConfiguration.ORIGINAL);
+    }
+
+    /**
+     * Convert a well-formed (but not necessarily valid) XML into a
+     * JSONObject asynchronously and return a CompletableFuture. Some information may be lost 
+     * in this transformation because JSON is a data format and XML is a document format. 
+     * XML uses elements, attributes, and content text, while JSON uses unordered collections of
+     * name/value pairs and arrays of values. JSON does not does not like to
+     * distinguish between elements and attributes. Sequences of similar
+     * elements are represented as JSONArrays. Content text may be placed in a
+     * "content" member. Comments, prologs, DTDs, and
+     * 
+     * <pre>{@code
+     * &lt;[ [ ]]>}</pre>
+     * 
+     * are ignored.
+     *
+     * @param reader The XML source reader.
+     * @param config Configuration options for the parser
+     * @return A CompletableFuture containing the JSONObject result
+     */
+    public static CompletableFuture<JSONObject> toJSONObjectAsync(Reader reader, XMLParserConfiguration config) {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        CompletableFuture<JSONObject> future = CompletableFuture.supplyAsync(() -> {
+            try {
+                return toJSONObject(reader, config);
+            } catch (JSONException e) {
+                throw new CompletionException(e);
+            }
+        }, executor);
+        
+        future.whenComplete((result, thrown) -> executor.shutdown());
+        
+        return future;
+    }
+
+    /**
+     * Convert a well-formed (but not necessarily valid) XML string into a
+     * JSONObject asynchronously and return a CompletableFuture. Some information may be lost 
+     * in this transformation because JSON is a data format and XML is a document format. 
+     * XML uses elements, attributes, and content text, while JSON uses unordered collections of
+     * name/value pairs and arrays of values. JSON does not does not like to
+     * distinguish between elements and attributes. Sequences of similar
+     * elements are represented as JSONArrays. Content text may be placed in a
+     * "content" member. Comments, prologs, DTDs, and
+     * 
+     * <pre>{@code
+     * &lt;[ [ ]]>}</pre>
+     * 
+     * are ignored.
+     *
+     * @param string The XML source string.
+     * @return A CompletableFuture containing the JSONObject result
+     */
+    public static CompletableFuture<JSONObject> toJSONObjectAsync(String string) {
+        return toJSONObjectAsync(new StringReader(string));
+    }
+
+    /**
+     * Convert a well-formed (but not necessarily valid) XML string into a
+     * JSONObject asynchronously and return a CompletableFuture. Some information may be lost 
+     * in this transformation because JSON is a data format and XML is a document format. 
+     * XML uses elements, attributes, and content text, while JSON uses unordered collections of
+     * name/value pairs and arrays of values. JSON does not does not like to
+     * distinguish between elements and attributes. Sequences of similar
+     * elements are represented as JSONArrays. Content text may be placed in a
+     * "content" member. Comments, prologs, DTDs, and
+     * 
+     * <pre>{@code
+     * &lt;[ [ ]]>}</pre>
+     * 
+     * are ignored.
+     *
+     * @param string The XML source string.
+     * @param config Configuration options for the parser
+     * @return A CompletableFuture containing the JSONObject result
+     */
+    public static CompletableFuture<JSONObject> toJSONObjectAsync(String string, XMLParserConfiguration config) {
+        return toJSONObjectAsync(new StringReader(string), config);
     }
 }
